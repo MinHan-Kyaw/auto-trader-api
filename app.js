@@ -1,8 +1,10 @@
 var express = require("express");
 require("dotenv").config();
-var indexRouter = require("./routes/index");
-var apiResponse = require("./helpers/apiResponse");
 var cors = require("cors");
+
+var apiRouter = require("./routes/api");
+var apiResponse = require("./helpers/apiResponse");
+
 
 // DB connection
 var MONGODB_URL = process.env.MONGODB_URL;
@@ -29,8 +31,12 @@ app.use(express.urlencoded({ extended: false }));
 //To allow cross-origin requests
 app.use(cors());
 
-//Route Prefixes
-app.use("/", indexRouter);
+app.get("/", function(req, res) {
+    res.send("Hello, world!"); // Send a simple response without rendering a view
+});
+
+// Route Handlers
+app.use("/api/", apiRouter);
 
 // throw 404 if URL not found
 app.all("*", function(req, res) {
