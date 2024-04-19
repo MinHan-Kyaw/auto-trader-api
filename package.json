@@ -1,0 +1,29 @@
+{
+  "name": "auto-trader-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:MinHan-Kyaw/auto-trader-api.git",
+  "author": "Min Han Kyaw <minhankyaw.mh@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "node ./bin/www",
+    "dev": "nodemon ./bin/www",
+    "test": "nyc _mocha --timeout 10000 --exit --report lcovonly -- -R spec",
+    "lint": "eslint --fix --config .eslintrc.json \"**/*.js\""
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-jwt": "^8.4.1",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.2",
+    "nodemailer": "^6.9.13"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "nodemon": "^3.1.0"
+  }
+}
