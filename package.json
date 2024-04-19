@@ -1,7 +1,6 @@
 {
   "name": "auto-trader-api",
   "version": "1.0.0",
-  "main": "index.js",
   "repository": "git@github.com:MinHan-Kyaw/auto-trader-api.git",
   "author": "Min Han Kyaw <minhankyaw.mh@gmail.com>",
   "license": "MIT",
