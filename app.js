@@ -1,6 +1,7 @@
 var express = require("express");
 require("dotenv").config();
 var cors = require("cors");
+const mongoSanitize = require('express-mongo-sanitize');
 
 var apiRouter = require("./routes/api");
 var apiResponse = require("./helpers/apiResponse");
@@ -27,6 +28,9 @@ var app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// To remove data using these defaults:
+app.use(mongoSanitize());
 
 //To allow cross-origin requests
 app.use(cors());
