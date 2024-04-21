@@ -1,9 +1,19 @@
 const { body, validationResult } = require("express-validator");
 const mongoose = require("mongoose");
+const aws = require("aws-sdk");
 
 const apiResponse = require("../helpers/apiResponse");
+const photoUploader = require("../helpers/photoUploader");
 const auth = require("../middlewares/jwt");
 const CarListing = require("../models/CarListingModel");
+
+aws.config.update({
+  accessKeyId: process.env.ACCESSKEY_ID,
+  secretAccessKey: process.env.SECRET_ACCESSKEY,
+  region: process.env.REGION, // Example: "nyc3"
+});
+
+const s3 = new aws.S3();
 
 /**
  * Add CarListing.
@@ -66,7 +76,7 @@ exports.addCarListing = [
     .isLength({ min: 1 })
     .trim()
     .escape(), // Add .escape() for location
-  (req, res) => {
+  async (req, res) => {
     try {
       const errors = validationResult(req);
       const {
@@ -82,7 +92,6 @@ exports.addCarListing = [
         fuelType,
         price,
         description,
-        photos,
         location,
         createdBy,
       } = req.body;
@@ -99,6 +108,15 @@ exports.addCarListing = [
           errors.array()
         );
       } else {
+        // Check if a car listing with the same VIN already exists
+        const existingCarListing = await CarListing.findOne({ vin });
+        if (existingCarListing) {
+          return apiResponse.ErrorResponse(
+            res,
+            "Duplicate VIN. Please use a different VIN."
+          );
+        }
+
         // Save car listing.
         const carListing = new CarListing({
           sellerEmail,
@@ -113,24 +131,38 @@ exports.addCarListing = [
           fuel_type: fuelType,
           price,
           description,
-          photos,
           location,
-          createdBy, // Assuming req.user contains the authenticated user object
+          createdBy,
           createdBy,
         });
+        const savedCarListing = await carListing.save();
+        let uploadedFiles = [];
 
-        carListing
-          .save()
-          .then((savedCarListing) => {
-            return apiResponse.successResponseWithData(
-              res,
-              "Car listing added successfully.",
-              savedCarListing
-            );
-          })
-          .catch((err) => {
-            return apiResponse.ErrorResponse(res, err);
-          });
+        if (req.files && req.files.length > 0) {
+          uploadedFiles = await photoUploader.uploadToS3(
+            req.files,
+            savedCarListing._id
+          );
+        }
+        const photos = uploadedFiles.map((file) => ({
+          filename: file.filename,
+          desktopUrl: file.desktopUrl,
+          mobileUrl: file.mobileUrl,
+          originalUrl: file.originalUrl,
+        }));
+
+        // Update the saved car listing with the parsed photos data
+        await CarListing.findByIdAndUpdate(
+          savedCarListing._id,
+          { photos: JSON.stringify(photos) },
+          { new: true }
+        );
+
+        return apiResponse.successResponseWithData(
+          res,
+          "Car listing added successfully.",
+          { ...savedCarListing.toObject(), photos }
+        );
       }
     } catch (err) {
       // Throw error in JSON response with status 500.
@@ -325,12 +357,10 @@ exports.updateCarListing = [
         fuelType,
         price,
         description,
-        photos,
         location,
         createdBy,
       } = req.body;
 
-      // Check if the authenticated user ID matches the createdBy field
       if (req.auth._id.toString() !== createdBy) {
         return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
       }
@@ -341,44 +371,88 @@ exports.updateCarListing = [
           "Validation Error.",
           errors.array()
         );
-      } else {
-        // Update car listing.
-        const updatedData = {
-          sellerEmail,
-          sellerPhone,
-          make,
-          model,
-          year,
-          mileage,
-          vin,
-          engine_size: engineSize,
-          transmission,
-          fuel_type: fuelType,
-          price,
-          description,
-          photos,
-          location,
-          updatedBy: req.auth._id, // Add the updatedBy field
-        };
+      }
 
-        const updatedCarListing = await CarListing.findByIdAndUpdate(
-          req.params.id,
-          updatedData,
-          { new: true }
-        );
+      const existingCarListing = await CarListing.findById(req.params.id);
 
-        if (!updatedCarListing) {
-          return apiResponse.notFoundResponse(res, "Car listing not found.");
+      if (!existingCarListing) {
+        return apiResponse.notFoundResponse(res, "Car listing not found.");
+      }
+
+      if (vin !== existingCarListing.vin) {
+        // Check if the new vin already exists in the database
+        const existingListingWithNewVin = await CarListing.findOne({ vin });
+
+        // If the new vin already exists, return a validation error
+        if (existingListingWithNewVin) {
+          return apiResponse.validationError(
+            res,
+            "Duplicate VIN. Please use a different VIN."
+          );
         }
+      }
 
-        return apiResponse.successResponseWithData(
-          res,
-          "Car listing updated successfully.",
-          updatedCarListing
+      const existingPhotos = JSON.parse(existingCarListing.photos || "[]");
+
+      // Handle addition of new photos
+      const newPhotos = req.files;
+      let uploadedFiles = [];
+      if (newPhotos.length > 0) {
+        uploadedFiles = await photoUploader.uploadToS3(
+          newPhotos,
+          req.params.id
         );
       }
+      const updatedPhotos = [...existingPhotos, ...uploadedFiles];
+
+      // Handle removal of photos
+      const photosToRemove = JSON.parse(req.body.removePhotos);
+
+      const updatedPhotosFiltered = updatedPhotos.filter(
+        (file) => !photosToRemove.includes(file.filename)
+      );
+
+      // Delete removed photos from S3
+      await Promise.all(
+        photosToRemove.map(async (filename) => {
+          await photoUploader.deleteFromS3(filename, req.params.id);
+          console.log("Deleted:", filename);
+        })
+      );
+
+      const updatedData = {
+        sellerEmail,
+        sellerPhone,
+        make,
+        model,
+        year,
+        mileage,
+        vin,
+        engine_size: engineSize,
+        transmission,
+        fuel_type: fuelType,
+        price,
+        description,
+        location,
+        createdBy,
+        photos: JSON.stringify(updatedPhotosFiltered),
+        updatedBy: req.auth._id,
+      };
+
+      const updatedCarListing = await CarListing.findByIdAndUpdate(
+        req.params.id,
+        updatedData,
+        { new: true }
+      );
+      return apiResponse.successResponseWithData(
+        res,
+        "Car listing updated successfully.",
+        {
+          ...updatedCarListing.toObject(),
+          photos: JSON.parse(updatedCarListing.photos),
+        }
+      );
     } catch (err) {
-      // Throw error in JSON response with status 500.
       return apiResponse.ErrorResponse(res, err);
     }
   },
@@ -403,20 +477,22 @@ exports.deleteCarListing = [
     }
     try {
       // Find the car listing by ID
-      const carListing = await CarListing.findById(req.params.id);
+    //   const carListing = await CarListing.findById(req.params.id);
 
       // Check if the car listing exists
-      if (!carListing) {
-        return apiResponse.notFoundResponse(res, "Car listing not found.");
-      }
+    //   if (!carListing) {
+    //     return apiResponse.notFoundResponse(res, "Car listing not found.");
+    //   }
 
       // Check if the authenticated user ID matches the createdBy field
-      if (req.auth._id.toString() !== carListing.createdBy.toString()) {
-        return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
-      }
+    //   if (req.auth._id.toString() !== carListing.createdBy.toString()) {
+    //     return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
+    //   }
 
       // Delete the car listing
-      await CarListing.findByIdAndDelete(req.params.id);
+    //   await CarListing.findByIdAndDelete(req.params.id);
+
+      await photoUploader.deleteRecordFromS3(req.params.id);
 
       // Return success response
       return apiResponse.successResponse(
@@ -429,3 +505,7 @@ exports.deleteCarListing = [
     }
   },
 ];
+
+
+
+
