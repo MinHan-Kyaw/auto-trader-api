@@ -477,21 +477,21 @@ exports.deleteCarListing = [
     }
     try {
       // Find the car listing by ID
-    //   const carListing = await CarListing.findById(req.params.id);
+      const carListing = await CarListing.findById(req.params.id);
 
       // Check if the car listing exists
-    //   if (!carListing) {
-    //     return apiResponse.notFoundResponse(res, "Car listing not found.");
-    //   }
+      if (!carListing) {
+        return apiResponse.notFoundResponse(res, "Car listing not found.");
+      }
 
       // Check if the authenticated user ID matches the createdBy field
-    //   if (req.auth._id.toString() !== carListing.createdBy.toString()) {
-    //     return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
-    //   }
+      if (req.auth._id.toString() !== carListing.createdBy.toString()) {
+        return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
+      }
 
       // Delete the car listing
-    //   await CarListing.findByIdAndDelete(req.params.id);
-
+      await CarListing.findByIdAndDelete(req.params.id);
+      
       await photoUploader.deleteRecordFromS3(req.params.id);
 
       // Return success response
