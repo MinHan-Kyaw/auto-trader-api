@@ -219,17 +219,21 @@ exports.carlistingList = [
         // Add case-insensitive search for make
         filter.fuelType = { $regex: fuelType, $options: "i" };
       }
-
       // Execute the find query with the filter object
       CarListing.find(filter)
         .select("-createdAt -updatedAt -__v")
+        .lean() // Convert Mongoose documents to plain JavaScript objects
         .then((carListings) => {
           // Check if any car listings are found
           if (carListings.length > 0) {
+            const modifiedCarListings = carListings.map((carListing) => {
+              carListing.photos = JSON.parse(carListing.photos);
+              return carListing;
+            });
             return apiResponse.successResponseWithData(
               res,
               "Operation success",
-              carListings
+              modifiedCarListings
             );
           } else {
             return apiResponse.successResponseWithData(
@@ -491,7 +495,7 @@ exports.deleteCarListing = [
 
       // Delete the car listing
       await CarListing.findByIdAndDelete(req.params.id);
-      
+
       await photoUploader.deleteRecordFromS3(req.params.id);
 
       // Return success response
@@ -505,7 +509,3 @@ exports.deleteCarListing = [
     }
   },
 ];
-
-
-
-
