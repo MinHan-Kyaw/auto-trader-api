@@ -40,10 +40,11 @@ async function uploadToS3(files, id) {
         await s3.upload(desktopParams).promise();
 
         // Get pre-signed URL for the desktop thumbnail image
+        
         const desktopUrl = await s3.getSignedUrlPromise("getObject", {
           Bucket: process.env.BUCKET_NAME,
           Key: desktopKey,
-          Expires: null, // URL expires in 1 hour
+          Expires: 365 * 24 * 60 * 60 // 1 year (or any sufficiently large value), 
         });
 
         // Resize the image to the specified dimensions for mobile view (640x360)
@@ -66,7 +67,7 @@ async function uploadToS3(files, id) {
         const mobileUrl = await s3.getSignedUrlPromise("getObject", {
           Bucket: process.env.BUCKET_NAME,
           Key: mobileKey,
-          Expires: null, // URL expires in 1 hour
+          Expires: 365 * 24 * 60 * 60 // 1 year (or any sufficiently large value), 
         });
 
         // Create the filename for the original image
@@ -84,7 +85,7 @@ async function uploadToS3(files, id) {
         const originalUrl = await s3.getSignedUrlPromise("getObject", {
           Bucket: process.env.BUCKET_NAME,
           Key: originalKey,
-          Expires: null, // URL expires in 1 hour
+          Expires: 365 * 24 * 60 * 60 // 1 year (or any sufficiently large value), 
         });
 
         uploadedFiles.push({

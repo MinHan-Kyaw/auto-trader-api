@@ -219,38 +219,47 @@ exports.carlistingList = [
         // Add case-insensitive search for make
         filter.fuelType = { $regex: fuelType, $options: "i" };
       }
+      
       const page = parseInt(req.query.page) || 1; // Default page number is 1
       const pageSize = parseInt(req.query.pageSize) || 10; // Default page size is 10
-
+      
       // Calculate skip value for pagination
       const skip = (page - 1) * pageSize;
       // Execute the find query with the filter object
-      CarListing.find(filter)
-        .select("-createdAt -updatedAt -__v")
-        .skip(skip)
-        .limit(pageSize)
-        .lean() // Convert Mongoose documents to plain JavaScript objects
-        .then((carListings) => {
+      Promise.all([
+        // Query for paginated results
+        CarListing.find(filter)
+          .select("-createdAt -updatedAt -__v")
+          .skip(skip)
+          .limit(pageSize)
+          .lean(), // Convert Mongoose documents to plain JavaScript objects
+        // Query for total count
+        CarListing.countDocuments(filter),
+      ])
+        .then(([carListings, totalCount]) => {
           // Check if any car listings are found
           if (carListings.length > 0) {
             const modifiedCarListings = carListings.map((carListing) => {
-              carListing.photos = JSON.parse(carListing.photos);
+              if(carListing.photos != ""){
+                carListing.photos = JSON.parse(carListing.photos);
+              }
               return carListing;
             });
             return apiResponse.successResponseWithData(
               res,
               "Operation success",
-              modifiedCarListings
+              { carListings: modifiedCarListings, totalCount }
             );
           } else {
             return apiResponse.successResponseWithData(
               res,
               "No car listings found",
-              []
+              { carListings: [], totalCount: 0 }
             );
           }
         })
         .catch((err) => {
+          console.log(err);
           // Handle errors
           return apiResponse.ErrorResponse(res, err);
         });
@@ -354,6 +363,7 @@ exports.updateCarListing = [
     .escape(), // Add .escape() for location
   async (req, res) => {
     try {
+     
       const errors = validationResult(req);
       const {
         sellerEmail,
@@ -389,14 +399,13 @@ exports.updateCarListing = [
       if (!existingCarListing) {
         return apiResponse.notFoundResponse(res, "Car listing not found.");
       }
-
       if (vin !== existingCarListing.vin) {
         // Check if the new vin already exists in the database
         const existingListingWithNewVin = await CarListing.findOne({ vin });
-
+        
         // If the new vin already exists, return a validation error
         if (existingListingWithNewVin) {
-          return apiResponse.validationError(
+          return apiResponse.ErrorResponse(
             res,
             "Duplicate VIN. Please use a different VIN."
           );
@@ -404,7 +413,6 @@ exports.updateCarListing = [
       }
 
       const existingPhotos = JSON.parse(existingCarListing.photos || "[]");
-
       // Handle addition of new photos
       const newPhotos = req.files;
       let uploadedFiles = [];
@@ -422,7 +430,7 @@ exports.updateCarListing = [
       const updatedPhotosFiltered = updatedPhotos.filter(
         (file) => !photosToRemove.includes(file.filename)
       );
-
+     
       // Delete removed photos from S3
       await Promise.all(
         photosToRemove.map(async (filename) => {
