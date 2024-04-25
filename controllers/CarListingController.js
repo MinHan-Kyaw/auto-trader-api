@@ -219,9 +219,16 @@ exports.carlistingList = [
         // Add case-insensitive search for make
         filter.fuelType = { $regex: fuelType, $options: "i" };
       }
+      const page = parseInt(req.query.page) || 1; // Default page number is 1
+      const pageSize = parseInt(req.query.pageSize) || 10; // Default page size is 10
+
+      // Calculate skip value for pagination
+      const skip = (page - 1) * pageSize;
       // Execute the find query with the filter object
       CarListing.find(filter)
         .select("-createdAt -updatedAt -__v")
+        .skip(skip)
+        .limit(pageSize)
         .lean() // Convert Mongoose documents to plain JavaScript objects
         .then((carListings) => {
           // Check if any car listings are found
