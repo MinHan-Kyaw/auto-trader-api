@@ -412,6 +412,7 @@ exports.updateCarListing = [
         }
       }
 
+
       const existingPhotos = JSON.parse(existingCarListing.photos || "[]");
       // Handle addition of new photos
       const newPhotos = req.files;
@@ -423,14 +424,12 @@ exports.updateCarListing = [
         );
       }
       const updatedPhotos = [...existingPhotos, ...uploadedFiles];
-
       // Handle removal of photos
       const photosToRemove = JSON.parse(req.body.removePhotos);
 
       const updatedPhotosFiltered = updatedPhotos.filter(
         (file) => !photosToRemove.includes(file.filename)
       );
-     
       // Delete removed photos from S3
       await Promise.all(
         photosToRemove.map(async (filename) => {
