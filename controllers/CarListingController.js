@@ -219,10 +219,10 @@ exports.carlistingList = [
         // Add case-insensitive search for make
         filter.fuelType = { $regex: fuelType, $options: "i" };
       }
-      
+
       const page = parseInt(req.query.page) || 1; // Default page number is 1
       const pageSize = parseInt(req.query.pageSize) || 10; // Default page size is 10
-      
+
       // Calculate skip value for pagination
       const skip = (page - 1) * pageSize;
       // Execute the find query with the filter object
@@ -240,7 +240,7 @@ exports.carlistingList = [
           // Check if any car listings are found
           if (carListings.length > 0) {
             const modifiedCarListings = carListings.map((carListing) => {
-              if(carListing.photos != ""){
+              if (carListing.photos != "") {
                 carListing.photos = JSON.parse(carListing.photos);
               }
               return carListing;
@@ -288,12 +288,23 @@ exports.carListingDetail = [
       const carListing = await CarListing.findOne({
         _id: req.params.id,
       }).select("-createdAt -updatedAt -__v");
-      // Return the car listing data
-      return apiResponse.successResponseWithData(
-        res,
-        "Operation success",
-        carListing
-      );
+      if (carListing) {
+        if (carListing.photos !== "") {
+          console.log("Photos:", carListing.photos);
+          carListing.photos = JSON.parse(carListing.photos);
+        }
+        return apiResponse.successResponseWithData(
+          res,
+          "Operation success",
+          carListing
+        );
+      } else {
+        return apiResponse.successResponseWithData(
+          res,
+          "No car listing found",
+          []
+        );
+      }
     } catch (err) {
       // Throw error in JSON response with status 500.
       return apiResponse.ErrorResponse(res, err);
@@ -363,7 +374,6 @@ exports.updateCarListing = [
     .escape(), // Add .escape() for location
   async (req, res) => {
     try {
-     
       const errors = validationResult(req);
       const {
         sellerEmail,
@@ -382,9 +392,9 @@ exports.updateCarListing = [
         createdBy,
       } = req.body;
 
-      if (req.auth._id.toString() !== createdBy) {
-        return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
-      }
+      // if (req.auth._id.toString() !== createdBy) {
+      //   return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
+      // }
 
       if (!errors.isEmpty()) {
         return apiResponse.validationErrorWithData(
@@ -402,7 +412,7 @@ exports.updateCarListing = [
       if (vin !== existingCarListing.vin) {
         // Check if the new vin already exists in the database
         const existingListingWithNewVin = await CarListing.findOne({ vin });
-        
+
         // If the new vin already exists, return a validation error
         if (existingListingWithNewVin) {
           return apiResponse.ErrorResponse(
@@ -411,12 +421,31 @@ exports.updateCarListing = [
           );
         }
       }
+      const typeOfPhotos = typeof existingCarListing.photos;
+      let existingPhotos = [];
 
+      if (typeOfPhotos === "object" && existingCarListing.photos !== null) {
+        // Handle the case where photos is an object
+        existingPhotos = existingCarListing.photos;
+      } else if (typeOfPhotos === "string") {
+        // Handle the case where photos is a JSON string
+        try {
+          existingPhotos = JSON.parse(existingCarListing.photos);
+        } catch (err) {
+          console.log("Error parsing photos", err);
+        }
+      } else {
+        // Handle other cases, such as undefined or other unexpected types
+        console.log(
+          "Unexpected type for existingCarListing.photos:",
+          typeOfPhotos
+        );
+      }
 
-      const existingPhotos = JSON.parse(existingCarListing.photos || "[]");
       // Handle addition of new photos
       const newPhotos = req.files;
       let uploadedFiles = [];
+
       if (newPhotos.length > 0) {
         uploadedFiles = await photoUploader.uploadToS3(
           newPhotos,
@@ -503,9 +532,9 @@ exports.deleteCarListing = [
       }
 
       // Check if the authenticated user ID matches the createdBy field
-      if (req.auth._id.toString() !== carListing.createdBy.toString()) {
-        return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
-      }
+      // if (req.auth._id.toString() !== carListing.createdBy.toString()) {
+      //   return apiResponse.unauthorizedResponse(res, "Unauthorized access.");
+      // }
 
       // Delete the car listing
       await CarListing.findByIdAndDelete(req.params.id);
